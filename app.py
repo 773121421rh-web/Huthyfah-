@@ -8,14 +8,15 @@ from contextlib import contextmanager
 import pandas as pd
 import streamlit as st
 
-DB_FILE = os.getenv("ERP_DB", "super_erp_system.db")
+# تم تغيير اسم ملف قاعدة البيانات هنا لتفادي أخطاء التعارض وبناء قاعدة جديدة نظيفة
+DB_FILE = os.getenv("ERP_DB", "super_erp_v2.db")
 ROLES = ["مدير النظام", "محاسب", "موظف مبيعات", "مدير مشتريات", "مدير موارد بشرية", "مراقب مخزون"]
 BASE_CURRENCY = "SAR"
 
 st.set_page_config(page_title="SUPER ERP", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 
 # -----------------------------------------------------------------------------
-# الدوال المساعدة الأساسية (تم نقلها للأعلى لتفادي أخطاء الاستدعاء)
+# الدوال المساعدة الأساسية
 # -----------------------------------------------------------------------------
 def now(): 
     return datetime.now().isoformat(timespec="seconds")
@@ -172,21 +173,6 @@ def init_db():
             entity TEXT, entity_id INTEGER, details TEXT, created_at TEXT NOT NULL);
         """)
         
-        # ترحيل البيانات القديمة
-        user_columns = {row[1] for row in c.execute("PRAGMA table_info(users)").fetchall()}
-        legacy_columns = {
-            "password_hash": "TEXT", "full_name": "TEXT", 
-            "active": "INTEGER DEFAULT 1", "created_at": "TEXT DEFAULT ''"
-        }
-        for column, definition in legacy_columns.items():
-            if column not in user_columns:
-                c.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
-        if "password" in user_columns:
-            old_users = c.execute("SELECT id, password FROM users WHERE password_hash IS NULL OR password_hash=''").fetchall()
-            for old_user in old_users:
-                c.execute("UPDATE users SET password_hash=?, full_name=COALESCE(full_name, username), active=1, created_at=COALESCE(NULLIF(created_at,''), ?) WHERE id=?",
-                          (hash_password(old_user[1] or ""), now(), old_user[0]))
-        
         # إدراج البيانات الافتراضية
         if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
             c.execute("INSERT INTO users(username,password_hash,full_name,role,created_at) VALUES(?,?,?,?,?)",
@@ -297,7 +283,6 @@ elif page in ("المبيعات", "المشتريات"):
             qty = c3.number_input("الكمية", min_value=0.01, value=1.0, step=1.0)
             
             c4, c5, c6 = st.columns(3)
-            # استخراج السعر الافتراضي بشكل آمن
             default_price = 0.0
             if pmap and selected in pmap:
                 default_price = float(pmap[selected]["sale_price"] if is_sale else pmap[selected]["cost_price"])
