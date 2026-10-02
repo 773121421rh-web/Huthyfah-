@@ -127,24 +127,40 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, action TEXT,
             entity TEXT, entity_id INTEGER, details TEXT, created_at TEXT NOT NULL);
         """)
-        if scalar("SELECT COUNT(*) FROM users") == 0:
+        # توافق مع قاعدة البيانات القديمة التي كانت تحتوي password و role فقط.
+        user_columns = {row[1] for row in c.execute("PRAGMA table_info(users)").fetchall()}
+        legacy_columns = {
+            "password_hash": "TEXT",
+            "full_name": "TEXT",
+            "active": "INTEGER DEFAULT 1",
+            "created_at": "TEXT DEFAULT ''",
+        }
+        for column, definition in legacy_columns.items():
+            if column not in user_columns:
+                c.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+        if "password" in user_columns:
+            old_users = c.execute("SELECT id, password FROM users WHERE password_hash IS NULL OR password_hash='' ").fetchall()
+            for old_user in old_users:
+                c.execute("UPDATE users SET password_hash=?, full_name=COALESCE(full_name, username), active=1, created_at=COALESCE(NULLIF(created_at,''), ?) WHERE id=?",
+                          (hash_password(old_user[1] or ""), now(), old_user[0]))
+        if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
             c.execute("INSERT INTO users(username,password_hash,full_name,role,created_at) VALUES(?,?,?,?,?)",
                       ("admin", hash_password("admin"), "مدير النظام", "مدير النظام", now()))
-        if scalar("SELECT COUNT(*) FROM currencies") == 0:
+        if c.execute("SELECT COUNT(*) FROM currencies").fetchone()[0] == 0:
             c.executemany("INSERT INTO currencies(code,name,symbol,exchange_rate) VALUES(?,?,?,?)", [
                 ("SAR", "ريال سعودي", "ر.س", 1), ("YER", "ريال يمني", "ر.ي", 0.0071), ("USD", "دولار أمريكي", "$", 3.75)])
-        if scalar("SELECT COUNT(*) FROM categories") == 0:
+        if c.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
             c.executemany("INSERT INTO categories(name) VALUES(?)", [("إلكترونيات",),("مكتبيات",),("مواد استهلاكية",)])
-        if scalar("SELECT COUNT(*) FROM warehouses") == 0:
+        if c.execute("SELECT COUNT(*) FROM warehouses").fetchone()[0] == 0:
             c.execute("INSERT INTO warehouses(name,location) VALUES(?,?)", ("المستودع الرئيسي", "المقر الرئيسي"))
-        if scalar("SELECT COUNT(*) FROM accounts") == 0:
+        if c.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0:
             accounts = [("101","الصندوق","أصول"),("102","البنك","أصول"),("103","المخزون","أصول"),
                         ("104","العملاء","أصول"),("201","الموردون","خصوم"),("301","رأس المال","حقوق ملكية"),
                         ("401","إيرادات المبيعات","إيرادات"),("402","إيرادات أخرى","إيرادات"),
                         ("501","تكلفة المبيعات","مصروفات"),("502","مصروفات الرواتب","مصروفات"),
                         ("503","المصروفات التشغيلية","مصروفات"),("504","فروق العملات","مصروفات")]
             c.executemany("INSERT INTO accounts(code,name,account_type) VALUES(?,?,?)", accounts)
-        if scalar("SELECT COUNT(*) FROM products") == 0:
+        if c.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0:
             t = now(); c.executemany("""INSERT INTO products
                 (sku,name,category_id,unit,cost_price,sale_price,stock_qty,min_stock,created_at)
                 VALUES(?,?,?,?,?,?,?,?,?)""", [("PRD-001","حاسوب محمول",1,"قطعة",700,850,12,3,t),
