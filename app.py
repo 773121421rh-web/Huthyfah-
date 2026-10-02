@@ -1,6 +1,5 @@
 """
-SUPER ERP SYSTEM - PRO EDITION (V4)
-نظام احترافي بواجهة عصرية، صلاحيات متقدمة، ومراكز تكلفة.
+SUPER ERP SYSTEM - PRO EDITION (V4 - Fixed Login)
 """
 import sqlite3, hashlib, os
 from datetime import datetime, date
@@ -13,7 +12,6 @@ import streamlit as st
 # ==========================================
 st.set_page_config(page_title="SUPER ERP PRO", page_icon="🏢", layout="wide", initial_sidebar_state="expanded")
 
-# تصميم CSS مخصص لجمال المظهر والخطوط العربية
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
@@ -104,12 +102,16 @@ def init_db():
             debit REAL DEFAULT 0, credit REAL DEFAULT 0, currency_code TEXT, exchange_rate REAL);
         """)
         
-        # الإعدادات الافتراضية
+        # الإعدادات والبيانات الافتراضية
         if c.execute("SELECT COUNT(*) FROM company_info").fetchone()[0] == 0:
             c.execute("INSERT INTO company_info (id, name, tax_no) VALUES (1, 'مؤسسة يمن سوفت للتجارة', '100200300')")
-        if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-            c.execute("INSERT INTO users(username, password_hash, full_name, role) VALUES(?,?,?,?)",
-                      ("admin", hash_password("admin"), "المدير العام", "مدير النظام"))
+        
+        # التأكد من إنشاء حساب المدير الإداري دائماً
+        admin_check = c.execute("SELECT COUNT(*) FROM users WHERE username='admin'").fetchone()[0]
+        if admin_check == 0:
+            c.execute("INSERT INTO users(username, password_hash, full_name, role, active) VALUES(?,?,?,?,?)",
+                      ("admin", hash_password("admin"), "المدير العام", "مدير النظام", 1))
+
         if c.execute("SELECT COUNT(*) FROM currencies").fetchone()[0] == 0:
             c.executemany("INSERT INTO currencies VALUES(?,?,?)", [("YER", "ريال يمني", 1.0), ("USD", "دولار أمريكي", 530.0), ("SAR", "ريال سعودي", 140.0)])
         if c.execute("SELECT COUNT(*) FROM cost_centers").fetchone()[0] == 0:
@@ -153,9 +155,11 @@ if not st.session_state.logged_in:
     with col2:
         st.markdown("<h1 style='text-align: center; color: #1f77b4;'>🏢 نظام SUPER ERP PRO</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center;'>النسخة المؤسسية - تسجيل الدخول</p>", unsafe_allow_html=True)
+        st.info("💡 بيانات الدخول الافتراضية: اسم المستخدم **admin** | كلمة المرور **admin**")
+        
         with st.form("login_form"):
-            username = st.text_input("👤 اسم المستخدم", placeholder="أدخل اسم المستخدم...")
-            password = st.text_input("🔑 كلمة المرور", type="password", placeholder="أدخل كلمة المرور...")
+            username = st.text_input("👤 اسم المستخدم", value="admin")
+            password = st.text_input("🔑 كلمة المرور", type="password", value="admin")
             submit = st.form_submit_button("تسجيل الدخول 🚀", use_container_width=True)
             
         if submit:
@@ -363,7 +367,7 @@ elif choice == "⚙️ إعدادات النظام":
     require_role(["مدير النظام"])
     st.markdown("<h2 class='main-header'>لوحة تحكم النظام والحوكمة</h2>", unsafe_allow_html=True)
     
-    t1, t2, t3 = st.tabs(["🏢 بيانات الشركة (Profile)", "🔑 إدارة المستخدمين والصلاحيات", "🏛️️ مراكز التكلفة للفروع"])
+    t1, t2, t3 = st.tabs(["🏢 بيانات الشركة (Profile)", "🔑 إدارة المستخدمين والصلاحيات", "🏛 مراكز التكلفة للفروع"])
     
     with t1:
         st.subheader("ترويسة المؤسسة للتقارير")
@@ -393,7 +397,7 @@ elif choice == "⚙️ إعدادات النظام":
                           (u_name, hash_password(pwd), f_name, role))
                         st.success("تم إنشاء الحساب.")
                         st.rerun()
-                    except sqlite3.IntegrityError: st.error("اسم المستخدم هذا مستخدم مسبقاً.")
+                    except sqlite3.IntegrityError: st.error("اسم المستخدم هذا مسجل مسبقاً.")
                 else: st.error("الاسم وكلمة المرور مطلوبان.")
         
         st.dataframe(get_df("SELECT username AS المستخدم, full_name AS الاسم, role AS الصلاحية FROM users"), use_container_width=True, hide_index=True)
