@@ -1,6 +1,5 @@
 """
-SUPER ERP SYSTEM - Arabic Streamlit Edition (Corrected & Optimized)
-التشغيل: pip install streamlit pandas passlib[bcrypt] ثم streamlit run super_erp_expanded.py
+SUPER ERP SYSTEM - Arabic Streamlit Edition (Yemen Version)
 """
 import sqlite3, hashlib, os
 from datetime import datetime, date
@@ -8,15 +7,15 @@ from contextlib import contextmanager
 import pandas as pd
 import streamlit as st
 
-# تم تغيير اسم ملف قاعدة البيانات هنا لتفادي أخطاء التعارض وبناء قاعدة جديدة نظيفة
-DB_FILE = os.getenv("ERP_DB", "super_erp_v2.db")
+# تم تحديث اسم قاعدة البيانات لضمان تطبيق التغييرات الهيكلية للعملة
+DB_FILE = os.getenv("ERP_DB", "super_erp_v3.db")
 ROLES = ["مدير النظام", "محاسب", "موظف مبيعات", "مدير مشتريات", "مدير موارد بشرية", "مراقب مخزون"]
-BASE_CURRENCY = "SAR"
+BASE_CURRENCY = "YER" # العملة الأساسية أصبحت الريال اليمني
 
 st.set_page_config(page_title="SUPER ERP", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 
 # -----------------------------------------------------------------------------
-# الدوال المساعدة الأساسية
+# الدوال المساعدة
 # -----------------------------------------------------------------------------
 def now(): 
     return datetime.now().isoformat(timespec="seconds")
@@ -56,7 +55,6 @@ def scalar(sql, params=()):
     row = one(sql, params)
     return list(row)[0] if row else 0
 
-# دالة آمنة لتحويل استعلامات SQL إلى Pandas DataFrame دون تسريب الاتصالات
 def get_df(sql, params=()):
     rows = q(sql, params)
     return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
@@ -79,7 +77,7 @@ def post_journal(description, lines, reference=""):
                              (entry_no, date.today().isoformat(), description, reference, st.session_state.get("user_id"), now())).lastrowid
         for x in lines:
             c.execute("INSERT INTO journal_lines(entry_id,account_code,debit,credit,currency_code,foreign_amount,exchange_rate) VALUES(?,?,?,?,?,?,?)",
-                      (entry_id, x["account"], x.get("debit",0), x.get("credit",0), x.get("currency","SAR"), x.get("foreign_amount",0), x.get("rate",1)))
+                      (entry_id, x["account"], x.get("debit",0), x.get("credit",0), x.get("currency","YER"), x.get("foreign_amount",0), x.get("rate",1)))
     return True, entry_no
 
 def record_stock(product_id, qty, movement_type, unit_cost=0, reference="", notes=""):
@@ -93,7 +91,7 @@ def can(*roles):
     return st.session_state.get("role") in roles
 
 # -----------------------------------------------------------------------------
-# تهيئة قاعدة البيانات
+# تهيئة قاعدة البيانات الأساسية
 # -----------------------------------------------------------------------------
 def init_db():
     with get_db() as c:
@@ -130,7 +128,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS invoices(
             id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_no TEXT UNIQUE NOT NULL,
             invoice_type TEXT NOT NULL, contact_id INTEGER, warehouse_id INTEGER,
-            currency_code TEXT DEFAULT 'SAR', exchange_rate REAL DEFAULT 1,
+            currency_code TEXT DEFAULT 'YER', exchange_rate REAL DEFAULT 1,
             subtotal REAL DEFAULT 0, discount REAL DEFAULT 0, tax REAL DEFAULT 0,
             total REAL DEFAULT 0, paid REAL DEFAULT 0, status TEXT DEFAULT 'مكتملة',
             notes TEXT, created_at TEXT NOT NULL, user_id INTEGER,
@@ -152,7 +150,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS expenses(
             id INTEGER PRIMARY KEY AUTOINCREMENT, expense_no TEXT UNIQUE,
             title TEXT NOT NULL, category TEXT, amount REAL NOT NULL,
-            currency_code TEXT DEFAULT 'SAR', paid_from TEXT DEFAULT 'الصندوق',
+            currency_code TEXT DEFAULT 'YER', paid_from TEXT DEFAULT 'الصندوق',
             notes TEXT, created_at TEXT NOT NULL, user_id INTEGER);
         CREATE TABLE IF NOT EXISTS accounts(
             code TEXT PRIMARY KEY, name TEXT NOT NULL, account_type TEXT NOT NULL,
@@ -164,7 +162,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS journal_lines(
             id INTEGER PRIMARY KEY AUTOINCREMENT, entry_id INTEGER NOT NULL,
             account_code TEXT NOT NULL, debit REAL DEFAULT 0, credit REAL DEFAULT 0,
-            currency_code TEXT DEFAULT 'SAR', foreign_amount REAL DEFAULT 0,
+            currency_code TEXT DEFAULT 'YER', foreign_amount REAL DEFAULT 0,
             exchange_rate REAL DEFAULT 1,
             FOREIGN KEY(entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
             FOREIGN KEY(account_code) REFERENCES accounts(code));
@@ -178,8 +176,9 @@ def init_db():
             c.execute("INSERT INTO users(username,password_hash,full_name,role,created_at) VALUES(?,?,?,?,?)",
                       ("admin", hash_password("admin"), "مدير النظام", "مدير النظام", now()))
         if c.execute("SELECT COUNT(*) FROM currencies").fetchone()[0] == 0:
+            # تعيين الريال اليمني كأساس، مع أسعار صرف تقريبية
             c.executemany("INSERT INTO currencies(code,name,symbol,exchange_rate) VALUES(?,?,?,?)", [
-                ("SAR", "ريال سعودي", "ر.س", 1), ("YER", "ريال يمني", "ر.ي", 0.0071), ("USD", "دولار أمريكي", "$", 3.75)])
+                ("YER", "ريال يمني", "ر.ي", 1.0), ("USD", "دولار أمريكي", "$", 530.0), ("SAR", "ريال سعودي", "ر.س", 140.0)])
         if c.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
             c.executemany("INSERT INTO categories(name) VALUES(?)", [("إلكترونيات",),("مكتبيات",),("مواد استهلاكية",)])
         if c.execute("SELECT COUNT(*) FROM warehouses").fetchone()[0] == 0:
@@ -191,11 +190,6 @@ def init_db():
                         ("501","تكلفة المبيعات","مصروفات"),("502","مصروفات الرواتب","مصروفات"),
                         ("503","المصروفات التشغيلية","مصروفات"),("504","فروق العملات","مصروفات")]
             c.executemany("INSERT INTO accounts(code,name,account_type) VALUES(?,?,?)", accounts)
-        if c.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0:
-            t = now()
-            c.executemany("""INSERT INTO products (sku,name,category_id,unit,cost_price,sale_price,stock_qty,min_stock,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?)""", [("PRD-001","حاسوب محمول",1,"قطعة",700,850,12,3,t),
-                ("PRD-002","طابعة مكتبية",1,"قطعة",175,220,7,2,t), ("PRD-003","ورق A4",2,"كرتون",5,8,35,10,t)])
 
 # -----------------------------------------------------------------------------
 # المصادقة
@@ -204,12 +198,11 @@ init_db()
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if not st.session_state.logged_in:
     st.title("🔐 SUPER ERP")
-    st.caption("نظام تخطيط موارد المؤسسة متعدد الوحدات")
+    st.caption("النسخة اليمنية - نظام إدارة المؤسسات")
     with st.form("login"):
         username = st.text_input("اسم المستخدم", value="admin")
         password = st.text_input("كلمة المرور", type="password")
         submit = st.form_submit_button("دخول", type="primary")
-    st.info("بيانات التجربة الأولى: admin / admin")
     if submit:
         u = one("SELECT * FROM users WHERE username=? AND active=1", (username,))
         if u and u["password_hash"] == hash_password(password):
@@ -244,8 +237,8 @@ if page == "لوحة المؤشرات":
     a,b,c,d,e = st.columns(5)
     a.metric("المنتجات", products)
     b.metric("العملاء", customers)
-    c.metric("المبيعات", money(sales))
-    d.metric("المصروفات", money(expenses))
+    c.metric(f"المبيعات ({BASE_CURRENCY})", money(sales))
+    d.metric(f"المصروفات ({BASE_CURRENCY})", money(expenses))
     e.metric("تنبيه مخزون", low, delta_color="inverse")
     
     st.divider()
@@ -339,7 +332,7 @@ elif page == "المخزون":
         with st.form("new_product"):
             a,b,c = st.columns(3)
             sku = a.text_input("رمز الصنف")
-            name = b.text_input("اسم الصنف")
+            name = b.text_input("اسم الصنف") # تم إزالة required=True
             cat = c.selectbox("التصنيف", list(cmap.keys()) if cmap else ["غير مصنف"])
             d,e,f = st.columns(3)
             unit = d.text_input("الوحدة", value="قطعة")
@@ -350,15 +343,18 @@ elif page == "المخزون":
             minimum = h.number_input("الحد الأدنى", min_value=0.0)
             
             if st.form_submit_button("حفظ الصنف", type="primary"):
-                try:
-                    with get_db() as conn: 
-                        pid = conn.execute("INSERT INTO products(sku,name,category_id,unit,cost_price,sale_price,stock_qty,min_stock,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                                           (sku, name, cmap.get(cat), unit, cost, sale, opening, minimum, now())).lastrowid
-                    if opening: record_stock(pid, opening, "إدخال", cost, "رصيد افتتاحي")
-                    st.success("تمت إضافة الصنف")
-                    st.rerun()
-                except sqlite3.IntegrityError: 
-                    st.error("رمز الصنف مستخدم مسبقاً")
+                if not name or not sku:
+                    st.error("اسم الصنف ورمزه مطلوبان")
+                else:
+                    try:
+                        with get_db() as conn: 
+                            pid = conn.execute("INSERT INTO products(sku,name,category_id,unit,cost_price,sale_price,stock_qty,min_stock,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                                               (sku, name, cmap.get(cat), unit, cost, sale, opening, minimum, now())).lastrowid
+                        if opening: record_stock(pid, opening, "إدخال", cost, "رصيد افتتاحي")
+                        st.success("تمت إضافة الصنف")
+                        st.rerun()
+                    except sqlite3.IntegrityError: 
+                        st.error("رمز الصنف مستخدم مسبقاً")
 
 # العملاء والموردون
 elif page == "العملاء والموردون":
@@ -372,20 +368,23 @@ elif page == "العملاء والموردون":
             a,b,c = st.columns(3)
             kind = a.selectbox("النوع", ["عميل", "مورد"])
             code = b.text_input("الرمز")
-            name = c.text_input("الاسم", required=True)
+            name = c.text_input("الاسم") # تم إزالة required=True
             d,e,f = st.columns(3)
             phone = d.text_input("الهاتف")
             email = e.text_input("البريد")
             opening = f.number_input("الرصيد الافتتاحي", min_value=0.0)
             address = st.text_area("العنوان")
             if st.form_submit_button("حفظ", type="primary"):
-                try:
-                    q("INSERT INTO contacts(kind,code,name,phone,email,address,opening_balance,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                      (kind, code or None, name, phone, email, address, opening, now()))
-                    st.success("تم حفظ الجهة")
-                    st.rerun()
-                except sqlite3.IntegrityError:
-                    st.error("الرمز مستخدم مسبقاً")
+                if not name:
+                    st.error("الاسم مطلوب")
+                else:
+                    try:
+                        q("INSERT INTO contacts(kind,code,name,phone,email,address,opening_balance,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                          (kind, code or None, name, phone, email, address, opening, now()))
+                        st.success("تم حفظ الجهة")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("الرمز مستخدم مسبقاً")
 
 # المصروفات
 elif page == "المصروفات":
@@ -396,18 +395,21 @@ elif page == "المصروفات":
         
     with st.form("expense"):
         a,b,c = st.columns(3)
-        title = a.text_input("البيان", required=True)
+        title = a.text_input("البيان") # تم إزالة required=True
         category = b.text_input("التصنيف", value="تشغيلية")
         amount = c.number_input("المبلغ", min_value=0.01)
         paid_from = st.selectbox("طريقة الدفع", ["الصندوق", "البنك"])
         notes = st.text_area("ملاحظات")
         if st.form_submit_button("تسجيل المصروف", type="primary"):
-            no = next_no("EXP")
-            q("INSERT INTO expenses(expense_no,title,category,amount,paid_from,notes,created_at,user_id) VALUES(?,?,?,?,?,?,?,?)",
-              (no, title, category, amount, paid_from, notes, now(), st.session_state.user_id))
-            post_journal(f"مصروف {title}", [{"account":"503","debit":amount}, {"account":"101" if paid_from=="الصندوق" else "102","credit":amount}], no)
-            audit("إنشاء", "مصروف", None, no)
-            st.success("تم تسجيل المصروف")
+            if not title:
+                st.error("بيان المصروف مطلوب")
+            else:
+                no = next_no("EXP")
+                q("INSERT INTO expenses(expense_no,title,category,amount,paid_from,notes,created_at,user_id) VALUES(?,?,?,?,?,?,?,?)",
+                  (no, title, category, amount, paid_from, notes, now(), st.session_state.user_id))
+                post_journal(f"مصروف {title}", [{"account":"503","debit":amount}, {"account":"101" if paid_from=="الصندوق" else "102","credit":amount}], no)
+                audit("إنشاء", "مصروف", None, no)
+                st.success("تم تسجيل المصروف")
             
     st.dataframe(get_df("SELECT expense_no AS الرقم,title AS البيان,category AS التصنيف,amount AS المبلغ,paid_from AS الدفع,created_at AS التاريخ FROM expenses ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
@@ -423,20 +425,23 @@ elif page == "الموارد البشرية":
         with st.form("employee"):
             a,b,c = st.columns(3)
             no = a.text_input("الرقم الوظيفي")
-            name = b.text_input("اسم الموظف", required=True)
+            name = b.text_input("اسم الموظف") # تم إزالة required=True
             dept = c.selectbox("القسم", ["الإدارة", "المبيعات", "المشتريات", "المحاسبة", "تقنية المعلومات"])
             d,e,f = st.columns(3)
             job = d.text_input("المسمى الوظيفي")
             phone = e.text_input("الهاتف")
             salary = f.number_input("الراتب الأساسي", min_value=0.0)
             if st.form_submit_button("إضافة موظف", type="primary"):
-                try:
-                    q("INSERT INTO employees(employee_no,name,department,job_title,phone,basic_salary,hire_date) VALUES(?,?,?,?,?,?,?)",
-                      (no or next_no("EMP"), name, dept, job, phone, salary, date.today().isoformat()))
-                    st.success("تمت الإضافة")
-                    st.rerun()
-                except sqlite3.IntegrityError:
-                    st.error("الرقم الوظيفي مستخدم")
+                if not name:
+                    st.error("اسم الموظف مطلوب")
+                else:
+                    try:
+                        q("INSERT INTO employees(employee_no,name,department,job_title,phone,basic_salary,hire_date) VALUES(?,?,?,?,?,?,?)",
+                          (no or next_no("EMP"), name, dept, job, phone, salary, date.today().isoformat()))
+                        st.success("تمت الإضافة")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("الرقم الوظيفي مستخدم")
         st.dataframe(get_df("SELECT employee_no AS الرقم,name AS الموظف,department AS القسم,job_title AS المسمى,basic_salary AS الراتب,hire_date AS التعيين FROM employees WHERE active=1"), use_container_width=True, hide_index=True)
     
     with t2:
@@ -467,18 +472,20 @@ elif page == "المحاسبة":
     
     with t1:
         with st.form("manual_journal"):
-            desc = st.text_input("بيان القيد", required=True)
+            desc = st.text_input("بيان القيد") # إصلاح الخطأ المذكور في الصورة
             ref = st.text_input("المرجع")
             debit_acc = st.selectbox("الحساب المدين", list(amap.keys()) if amap else ["لا توجد حسابات"])
             credit_acc = st.selectbox("الحساب الدائن", list(amap.keys()) if amap else ["لا توجد حسابات"])
             amount = st.number_input("المبلغ", min_value=0.01)
             
             currencies = q("SELECT * FROM currencies WHERE active=1")
-            currency = st.selectbox("العملة", [x["code"] for x in currencies] if currencies else ["SAR"])
+            currency = st.selectbox("العملة", [x["code"] for x in currencies] if currencies else ["YER"])
             rate = st.number_input("سعر الصرف", min_value=0.000001, value=1.0)
             
             if st.form_submit_button("ترحيل القيد", type="primary"):
-                if amap and debit_acc in amap and credit_acc in amap:
+                if not desc:
+                    st.error("بيان القيد مطلوب!")
+                elif amap and debit_acc in amap and credit_acc in amap:
                     ok, msg = post_journal(desc, [
                         {"account": amap[debit_acc], "debit": amount*rate, "currency": currency, "foreign_amount": amount, "rate": rate},
                         {"account": amap[credit_acc], "credit": amount*rate, "currency": currency, "foreign_amount": amount, "rate": rate}
@@ -521,8 +528,52 @@ elif page == "الإعدادات":
         st.warning("هذه الوحدة لمدير النظام فقط")
         st.stop()
         
-    t1, t2, t3 = st.tabs(["المستخدمون", "العملات", "التصنيفات"])
+    t1, t2, t3 = st.tabs(["العملات وأسعار الصرف", "المستخدمون", "التصنيفات"])
+    
     with t1:
+        st.subheader("تعديل أسعار الصرف")
+        st.info("قم بتعديل حقل 'سعر الصرف' مباشرة من الجدول أدناه ثم اضغط على زر الحفظ.")
+        
+        curr_df = get_df("SELECT code, name, symbol, exchange_rate FROM currencies")
+        
+        if not curr_df.empty:
+            # جدول تفاعلي لتعديل أسعار الصرف بسهولة
+            edited_curr = st.data_editor(
+                curr_df, 
+                column_config={
+                    "code": st.column_config.TextColumn("الرمز", disabled=True),
+                    "name": st.column_config.TextColumn("العملة"),
+                    "symbol": st.column_config.TextColumn("الاختصار"),
+                    "exchange_rate": st.column_config.NumberColumn("سعر الصرف (مقابل الريال اليمني)", format="%.4f")
+                }, 
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            if st.button("حفظ التعديلات على أسعار الصرف", type="primary"):
+                for _, row in edited_curr.iterrows():
+                    q("UPDATE currencies SET name=?, symbol=?, exchange_rate=? WHERE code=?",
+                      (row["name"], row["symbol"], row["exchange_rate"], row["code"]))
+                st.success("تم تحديث أسعار الصرف بنجاح!")
+                st.rerun()
+        
+        st.divider()
+        st.subheader("إضافة عملة جديدة")
+        with st.form("currency"):
+            code = st.text_input("الرمز (مثال: EUR)")
+            name = st.text_input("اسم العملة (مثال: يورو)")
+            symbol = st.text_input("الرمز المختصر (مثال: €)")
+            rate = st.number_input("سعر الصرف مقابل الريال اليمني", min_value=0.000001, value=1.0)
+            if st.form_submit_button("إضافة العملة"):
+                if code and name:
+                    q("INSERT OR REPLACE INTO currencies(code,name,symbol,exchange_rate) VALUES(?,?,?,?)",
+                      (code.upper(), name, symbol, rate))
+                    st.success("تمت الإضافة بنجاح")
+                    st.rerun()
+                else:
+                    st.error("الرمز والاسم مطلوبان")
+
+    with t2:
         with st.form("new_user"):
             a,b,c = st.columns(3)
             username = a.text_input("اسم المستخدم")
@@ -530,33 +581,28 @@ elif page == "الإعدادات":
             role = c.selectbox("الصلاحية", ROLES)
             password = st.text_input("كلمة المرور", type="password")
             if st.form_submit_button("إضافة مستخدم"):
-                try:
-                    q("INSERT INTO users(username,password_hash,full_name,role,created_at) VALUES(?,?,?,?,?)",
-                      (username, hash_password(password), fullname, role, now()))
-                    st.success("تمت الإضافة")
-                except sqlite3.IntegrityError:
-                    st.error("اسم المستخدم موجود")
+                if username and password:
+                    try:
+                        q("INSERT INTO users(username,password_hash,full_name,role,created_at) VALUES(?,?,?,?,?)",
+                          (username, hash_password(password), fullname, role, now()))
+                        st.success("تمت الإضافة")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("اسم المستخدم موجود")
+                else:
+                    st.error("اسم المستخدم وكلمة المرور مطلوبان")
         st.dataframe(get_df("SELECT username AS المستخدم,full_name AS الاسم,role AS الصلاحية,active AS فعال,created_at AS الإنشاء FROM users"), use_container_width=True, hide_index=True)
-        
-    with t2:
-        with st.form("currency"):
-            code = st.text_input("الرمز")
-            name = st.text_input("اسم العملة")
-            symbol = st.text_input("الرمز المختصر")
-            rate = st.number_input("سعر الصرف مقابل العملة الأساسية", min_value=0.000001, value=1.0)
-            if st.form_submit_button("حفظ العملة"):
-                q("INSERT OR REPLACE INTO currencies(code,name,symbol,exchange_rate) VALUES(?,?,?,?)",
-                  (code.upper(), name, symbol, rate))
-                st.success("تم الحفظ")
-        st.dataframe(get_df("SELECT code AS الرمز,name AS العملة,symbol AS الاختصار,exchange_rate AS سعر_الصرف FROM currencies"), use_container_width=True, hide_index=True)
         
     with t3:
         name = st.text_input("اسم التصنيف الجديد")
-        if st.button("إضافة التصنيف") and name:
-            try:
-                q("INSERT INTO categories(name) VALUES(?)", (name,))
-                st.success("تمت الإضافة")
-                st.rerun()
-            except sqlite3.IntegrityError:
-                st.error("التصنيف موجود مسبقاً")
+        if st.button("إضافة التصنيف"):
+            if name:
+                try:
+                    q("INSERT INTO categories(name) VALUES(?)", (name,))
+                    st.success("تمت الإضافة")
+                    st.rerun()
+                except sqlite3.IntegrityError:
+                    st.error("التصنيف موجود مسبقاً")
+            else:
+                st.error("اسم التصنيف مطلوب")
         st.dataframe(get_df("SELECT id AS الرقم,name AS التصنيف FROM categories"), use_container_width=True, hide_index=True)
