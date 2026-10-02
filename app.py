@@ -383,6 +383,4 @@ elif page=="الإعدادات":
         if st.button("إضافة التصنيف") and name:
             try:q("INSERT INTO categories(name) VALUES(?)",(name,));st.success("تمت الإضافة");st.rerun()
             except sqlite3.IntegrityError:st.error("التصنيف موجود مسبقاً")
-                st.dataframe(pd.DataFrame(q("SELECT id AS الرقم,name AS التصنيف FROM categories")),use_container_width=True,hide_index=True)
-            
-    
+        st.dataframe(pd.DataFrame(q("SELECT id AS الرقم,name AS التصنيف FROM categories")),use_container_width=True,hide_index=True)
